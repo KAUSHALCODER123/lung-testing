@@ -1,0 +1,344 @@
+---
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = import.meta.env.PUBLIC_SUPABASE_URL || 'https://YOUR_PROJECT.supabase.co';
+const supabaseKey = import.meta.env.PUBLIC_SUPABASE_ANON_KEY || 'YOUR_ANON_KEY';
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+// Fetch recent tests
+const { data: recentTests } = await supabase
+  .from('lung_tests')
+  .select('*')
+  .order('created_at', { ascending: false })
+  .limit(10);
+
+// Calculate statistics
+const { data: allTests } = await supabase
+  .from('lung_tests')
+  .select('max_pressure, duration, rating_stars');
+
+const totalTests = allTests?.length || 0;
+const avgPressure = totalTests > 0 
+  ? (allTests.reduce((sum, test) => sum + test.max_pressure, 0) / totalTests).toFixed(1)
+  : 0;
+const avgDuration = totalTests > 0
+  ? (allTests.reduce((sum, test) => sum + test.duration, 0) / totalTests).toFixed(1)
+  : 0;
+
+function getStars(count: number) {
+  return '⭐'.repeat(Math.min(count, 5)) + (count === 6 ? '🏆' : '');
+}
+
+function getRatingColor(stars: number) {
+  if (stars <= 2) return '#ef4444';
+  if (stars === 3) return '#f59e0b';
+  if (stars === 4) return '#3b82f6';
+  if (stars === 5) return '#10b981';
+  return '#8b5cf6';
+}
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lung Capacity Tester - Live Results</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+      color: #333;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      color: white;
+      margin-bottom: 40px;
+    }
+
+    h1 {
+      font-size: 3rem;
+      margin-bottom: 10px;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+    }
+
+    .subtitle {
+      font-size: 1.2rem;
+      opacity: 0.9;
+    }
+
+    .info-section {
+      background: white;
+      border-radius: 15px;
+      padding: 30px;
+      margin-bottom: 30px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+
+    .info-section h2 {
+      color: #667eea;
+      margin-bottom: 15px;
+      font-size: 1.8rem;
+    }
+
+    .info-section p {
+      line-height: 1.8;
+      color: #555;
+      margin-bottom: 10px;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .stat-card {
+      background: white;
+      border-radius: 15px;
+      padding: 25px;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      transition: transform 0.3s;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-5px);
+    }
+
+    .stat-value {
+      font-size: 2.5rem;
+      font-weight: bold;
+      color: #667eea;
+      margin: 10px 0;
+    }
+
+    .stat-label {
+      color: #666;
+      font-size: 1.1rem;
+    }
+
+    .results-section {
+      background: white;
+      border-radius: 15px;
+      padding: 30px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+
+    .results-section h2 {
+      color: #667eea;
+      margin-bottom: 20px;
+      font-size: 1.8rem;
+    }
+
+    .test-item {
+      border-left: 4px solid #667eea;
+      padding: 15px 20px;
+      margin-bottom: 15px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      transition: all 0.3s;
+    }
+
+    .test-item:hover {
+      background: #e9ecef;
+      transform: translateX(5px);
+    }
+
+    .test-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .test-rating {
+      font-size: 1.5rem;
+      font-weight: bold;
+    }
+
+    .test-time {
+      color: #666;
+      font-size: 0.9rem;
+    }
+
+    .test-details {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .test-detail {
+      font-size: 0.95rem;
+      color: #555;
+    }
+
+    .test-detail strong {
+      color: #333;
+    }
+
+    .refresh-btn {
+      position: fixed;
+      bottom: 30px;
+      right: 30px;
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 15px 30px;
+      border-radius: 50px;
+      font-size: 1rem;
+      cursor: pointer;
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+      transition: all 0.3s;
+    }
+
+    .refresh-btn:hover {
+      background: #5568d3;
+      transform: scale(1.05);
+    }
+
+    .how-it-works {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-top: 20px;
+    }
+
+    .step {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+    }
+
+    .step-number {
+      font-size: 2rem;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+
+    @media (max-width: 768px) {
+      h1 {
+        font-size: 2rem;
+      }
+      .stat-value {
+        font-size: 2rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🫁 Lung Capacity Tester</h1>
+      <p class="subtitle">Test Your Breathing Power & Track Your Progress</p>
+    </header>
+
+    <div class="info-section">
+      <h2>What is Lung Capacity?</h2>
+      <p>
+        <strong>Lung capacity</strong> is the total amount of air your lungs can hold. It's an important indicator
+        of respiratory health and fitness. This tester measures the force and duration of your breath
+        to give you insights into your lung function.
+      </p>
+      <p>
+        Regular testing can help track improvements from exercise, breathing exercises, or monitor
+        respiratory conditions. Athletes, singers, and wind instrument players often have above-average
+        lung capacity due to their training!
+      </p>
+
+      <div class="how-it-works">
+        <div class="step">
+          <div class="step-number">1</div>
+          <div>Take a deep breath</div>
+        </div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <div>Blow into the tube</div>
+        </div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <div>See your results instantly</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Total Tests</div>
+        <div class="stat-value">{totalTests}</div>
+        <div class="stat-label">Performed</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Average Pressure</div>
+        <div class="stat-value">{avgPressure}</div>
+        <div class="stat-label">hPa</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Average Duration</div>
+        <div class="stat-value">{avgDuration}</div>
+        <div class="stat-label">seconds</div>
+      </div>
+    </div>
+
+    <div class="results-section">
+      <h2>📊 Recent Test Results</h2>
+      {recentTests && recentTests.length > 0 ? (
+        recentTests.map((test) => (
+          <div class="test-item" style={`border-left-color: ${getRatingColor(test.rating_stars)}`}>
+            <div class="test-header">
+              <div class="test-rating" style={`color: ${getRatingColor(test.rating_stars)}`}>
+                {getStars(test.rating_stars)} {test.rating}
+              </div>
+              <div class="test-time">
+                {new Date(test.created_at).toLocaleString()}
+              </div>
+            </div>
+            <div class="test-details">
+              <div class="test-detail">
+                <strong>Pressure:</strong> {test.max_pressure.toFixed(1)} hPa
+              </div>
+              <div class="test-detail">
+                <strong>Duration:</strong> {test.duration.toFixed(1)}s
+              </div>
+            </div>
+          </div>
+        ))
+      ) : (
+        <p style="text-align: center; color: #666; padding: 40px;">
+          No tests yet. Be the first to try!
+        </p>
+      )}
+    </div>
+
+    <button class="refresh-btn" onclick="location.reload()">
+      🔄 Refresh Results
+    </button>
+  </div>
+
+  <script>
+    // Auto-refresh every 10 seconds
+    setTimeout(() => {
+      location.reload();
+    }, 10000);
+  </script>
+</body>
+</html>
