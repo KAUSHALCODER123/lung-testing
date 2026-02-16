@@ -690,8 +690,23 @@ function formatDate(dateString) {
         }
       }
 
-      // Poll every 3 seconds for fast updates
-      setInterval(fetchData, 3000);
+      // Realtime Subscription
+      const channel = supabase
+        .channel("realtime-lung-tests")
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "lung_tests",
+          },
+          (payload) => {
+            // When a new test comes in, re-fetch data to update numbers and list
+            console.log("New test received:", payload);
+            fetchData();
+          },
+        )
+        .subscribe();
     </script>
   </body>
 </html>
